@@ -13,11 +13,14 @@ declare(strict_types=1);
 
 namespace Phalcon\Mvc;
 
+use Closure;
 use Phalcon\Di\Injectable;
 use Phalcon\Events\EventsAwareInterface;
+use Phalcon\Events\ManagerInterface;
 use Phalcon\Events\Traits\EventsAwareTrait;
 use Phalcon\Mvc\View\Exception;
 use Phalcon\Traits\Helper\Str\DirSeparatorTrait;
+use Phalcon\Mvc\View\Engine\Php as PhpEngine;
 
 /**
  * Phalcon\Mvc\View is a class for working with the "view" portion of the
@@ -43,7 +46,7 @@ use Phalcon\Traits\Helper\Str\DirSeparatorTrait;
  * echo $view->getContent();
  * ```
  */
-class View extends Injectable implements EventsAwareInterface //ViewInterface
+class View extends Injectable implements ViewInterface, EventsAwareInterface
 {
     use DirSeparatorTrait;
     use EventsAwareTrait;
@@ -81,20 +84,219 @@ class View extends Injectable implements EventsAwareInterface //ViewInterface
     /**
      * @var string
      */
-    protected ?string $content = '';
+    protected ?string $actionName;
+
+    /**
+     * @var array
+     */
+    protected array $activeRenderPaths;
+
+    /**
+     * @var string
+     */
+    protected string $basePath = "";
+
+    /**
+     * @var string|null
+     */
+    protected ?string $content = "";
+
+    /**
+     * @var string
+     */
+    protected string $controllerName;
+
+    /**
+     * @var int
+     */
+    protected int $currentRenderLevel = 0;
+
+    /**
+     * @var bool
+     */
+    protected bool $disabled = false;
+
+    /**
+     * @var array
+     */
+    protected array $disabledLevels = [];
+
+    /**
+     * @var array|bool
+     */
+    protected array|bool $engines = false; // TODO: Make always array
+
+    /**
+     * @var string|null
+     */
+    protected ?string $layout = null;
+
+    /**
+     * @var string
+     */
+    protected string $layoutsDir = "";
+
+    /**
+     * @var string
+     */
+    protected string $mainView = "index";
+
+    /**
+     * @var array
+     */
+    protected array $options = [];
+
+    /**
+     * @var array
+     */
+    protected array $params = [];
+
+    /**
+     * @var array|null
+     */
+    protected ?array $pickView; // TODO: Make always array
+
+    /**
+     * @var string
+     */
+    protected string $partialsDir = "";
+
+    /**
+     * @var array
+     */
+    protected array $registeredEngines = [];
+
+    /**
+     * @var int
+     */
+    protected int $renderLevel = 5;
+
+    /**
+     * @var array
+     */
+    protected array $templatesAfter = [];
+
+    /**
+     * @var array
+     */
+    protected array $templatesBefore = [];
 
     /**
      * @var array
      */
     protected array $viewsDirs = [];
 
-    /**
+  /**
      * Phalcon\Mvc\View constructor
      */
     public function __construct(
-        protected array $options = []
+        array $options = []
     ) {
+        $this->options = $options;
     }
+
+    /**
+     * Magic method to retrieve a variable passed to the view
+     *
+     *```php
+     * echo $this->view->products;
+     *```
+     */
+    public function __get(?string $key): mixed
+    {
+        return $this->getVar($key);
+    }
+
+    /**
+     * Magic method to retrieve if a variable is set in the view
+     *
+     *```php
+     * echo isset($this->view->products);
+     *```
+     */
+    public function __isset(?string $key): bool
+    {
+        return isset($this->viewParams[$key]);
+    }
+
+    /**
+     * Magic method to pass variables to the views
+     *
+     *```php
+     * $this->view->products = $products;
+     *```
+     */
+    public function __set(?string $key, mixed $value): void
+    {
+        $this->setVar($key, $value);
+    }
+
+    /**
+     * Resets any template before layouts
+     */
+    public function cleanTemplateAfter(): View
+    {
+        $this->templatesAfter = [];
+        return $this;
+    }
+
+    /**
+     * Resets any "template before" layouts
+     */
+    public function cleanTemplateBefore(): View
+    {
+        $this->templatesBefore = [];
+        return $this;
+    }
+
+    /**
+     * Disables a specific level of rendering
+     *
+     *```php
+     * // Render all levels except ACTION level
+     * $this->view->disableLevel(
+     *     View::LEVEL_ACTION_VIEW
+     * );
+     *```
+     */
+    public function disableLevel(mixed $level): View
+    {
+        if (true === is_array($level)) {
+            $this->disabledLevels = $level;
+        } else {
+            $this->disabledLevels[$level] = true;
+        }
+        return $this;
+    }
+
+    /**
+     * Disables the auto-rendering process
+     */
+    public function disable(): ViewInterface
+    {
+        $this->disabled = true;
+        return $this;
+    }
+
+    /**
+     * Enables the auto-rendering process
+     */
+    public function enable(): View
+    {
+        $this->disabled = false;
+        return $this;
+    }
+
+    /**
+     * Checks whether view exists
+     * @deprecated
+     */
+    public function exists(?string $view): bool
+    {
+        return $this->has($view);
+    }
+
+
 
     /**
      * Finishes the render process by stopping the output buffering
@@ -104,7 +306,6 @@ class View extends Injectable implements EventsAwareInterface //ViewInterface
     public function finish(): View
     {
         ob_end_clean();
-
         return $this;
     }
 
@@ -116,9 +317,7 @@ class View extends Injectable implements EventsAwareInterface //ViewInterface
     public function start(): View
     {
         ob_start();
-
         $this->content = null;
-
         return $this;
     }
 
@@ -134,7 +333,7 @@ class View extends Injectable implements EventsAwareInterface //ViewInterface
      */
     public function setViewsDir(array|string $viewsDir): View
     {
-        if (is_string($viewsDir)) {
+        if (true === is_string($viewsDir)) {
             $this->viewsDirs = [$this->toDirSeparator($viewsDir)];
         } else {
             $newViewsDir = [];
@@ -153,5 +352,1147 @@ class View extends Injectable implements EventsAwareInterface //ViewInterface
         }
 
         return $this;
+    }
+
+    /**
+     * Gets the name of the action rendered
+     *
+     * @return string
+     */
+    public function getActionName(): string
+    {
+        return $this->actionName;
+    }
+
+    /**
+     * Returns the path (or paths) of the views that are currently rendered
+     *
+     * @return string|array
+     */
+    public function getActiveRenderPath(): string|array // TODO: return array
+    {
+        $viewsDirsCount = count($this->getViewsDirs());
+        $activeRenderPath = $this->activeRenderPaths;
+        if ($viewsDirsCount === 1) {
+            if (true === is_array($activeRenderPath) && count($activeRenderPath)) {
+                $activeRenderPath = $activeRenderPath[0];
+            }
+        }
+        if ($activeRenderPath === null) {
+            $activeRenderPath = "";
+        }
+        return $activeRenderPath;
+    }
+
+    /**
+     * Gets base path
+     *
+     * @return string
+     */
+    public function getBasePath(): string
+    {
+        return $this->basePath;
+    }
+
+    /**
+     * Returns output from another view stage
+     *
+     * @return string
+     */
+    public function getContent(): string
+    {
+        return $this->content;
+    }
+
+    /**
+     * Gets the name of the controller rendered
+     *
+     * @return string
+     */
+    public function getControllerName(): string
+    {
+        return $this->controllerName;
+    }
+
+    /**
+     * @return int
+     */
+    public function getCurrentRenderLevel(): int
+    {
+        return $this->currentRenderLevel;
+    }
+
+    /**
+     * @return array
+     */
+    public function getRegisteredEngines(): array
+    {
+        return $this->registeredEngines;
+    }
+
+    /**
+     * @return int
+     */
+    public function getRenderLevel(): int
+    {
+        return $this->renderLevel;
+    }
+
+    /**
+     * Returns the internal event manager
+     *
+     * @return ?\Phalcon\Events\ManagerInterface
+     */
+    public function getEventsManager(): ?ManagerInterface
+    {
+        return $this->eventsManager;
+    }
+
+    /**
+     * Returns the name of the main view
+     *
+     * @return string
+     */
+    public function getLayout(): string
+    {
+        return $this->layout;
+    }
+
+    /**
+     * Gets the current layouts sub-directory
+     *
+     * @return string
+     */
+    public function getLayoutsDir(): string
+    {
+        return $this->layoutsDir;
+    }
+
+    /**
+     * Returns the name of the main view
+     *
+     * @return string
+     */
+    public function getMainView(): string
+    {
+        return $this->mainView;
+    }
+
+    /**
+     * Returns parameters to views
+     *
+     * @return array
+     */
+    public function getParamsToView(): array
+    {
+        return $this->viewParams;
+    }
+
+    /**
+     * Renders a partial view
+     *
+     * ```php
+     * // Retrieve the contents of a partial
+     * echo $this->getPartial("shared/footer");
+     * ```
+     *
+     * ```php
+     * // Retrieve the contents of a partial with arguments
+     * echo $this->getPartial(
+     *     "shared/footer",
+     *     [
+     *         "content" => $html,
+     *     ]
+     * );
+     * ```
+     *
+     * @param string $partialPath
+     * @param array $params
+     * @return string
+     */
+    public function getPartial(?string $partialPath, mixed $params = null): string
+    {
+        // not liking the ob_* functions here, but it will greatly reduce the
+        // amount of double code.
+        ob_start();
+
+        $this->partial($partialPath, $params);
+
+        return ob_get_clean();
+    }
+
+    /**
+     * Gets the current partials sub-directory
+     *
+     * @return string
+     */
+    public function getPartialsDir(): string
+    {
+        return $this->partialsDir;
+    }
+
+    /**
+     * Perform the automatic rendering returning the output as a string
+     *
+     * ```php
+     * $template = $this->view->getRender(
+     *     "products",
+     *     "show",
+     *     [
+     *         "products" => $products,
+     *     ]
+     * );
+     * ```
+     *
+     * @param string controllerName
+     * @param string actionName
+     * @param array params
+     * @param mixed configCallback
+     * @return string
+     */
+    public function getRender(
+        ?string $controllerName,
+        ?string $actionName,
+        array $params = [],
+        $configCallback = null
+    ): string {
+        /**
+         * We must to clone the current view to keep the old state
+         */
+        $view = clone $this;
+
+        /**
+         * The component must be reset to its defaults
+         */
+        $view->reset();
+
+        /**
+         * Set the render variables
+         */
+        $view->setVars($params);
+
+        /**
+         * Perform extra configurations over the cloned object
+         */
+        if (true === is_object($configCallback)) {
+            call_user_func_array($configCallback, [$view]);
+        }
+
+        /**
+         * Start the output buffering
+         */
+        $view->start();
+
+        /**
+         * Perform the render passing only the controller and action
+         */
+        $view->render($controllerName, $actionName);
+
+        /**
+         * Stop the output buffering
+         */
+        $view->finish();
+
+        /**
+         * Get the processed content
+         */
+        return $view->getContent();
+    }
+
+    /**
+     * Returns a parameter previously set in the view
+     *
+     * @param ?string $key
+     * @return mixed
+     */
+    public function getVar(?string $key): mixed
+    {
+        if (false === isset($this->viewParams[$key])) {
+            return null;
+        }
+        return $this->viewParams[$key];
+    }
+
+    /**
+     * Gets views directory
+     *
+     * @return string|array
+     */
+    public function getViewsDir(): string|array // TODO: this should probably be an array
+    {
+        return $this->viewsDirs;
+    }
+
+    /**
+     * Gets views directories
+     *
+     * @return array
+     */
+    protected function getViewsDirs(): array
+    {
+        if (true === is_string($this->viewsDirs)) {
+            return [$this->viewsDirs];
+        }
+
+        return $this->viewsDirs;
+    }
+
+    /**
+     * Checks whether view exists
+     *
+     * @param string view
+     * @return bool
+     */
+    public function has(?string $view): bool
+    {
+        $basePath = $this->basePath;
+        $engines = $this->registeredEngines;
+
+        if (true === empty($engines)) {
+            $engines = [
+                ".phtml" => "Phalcon\\Mvc\\View\\Engine\\Php"
+            ];
+
+            $this->registerEngines($engines);
+        }
+
+        foreach ($this->getViewsDirs() as $viewsDir) {
+            foreach ($engines as $key => $extension) {
+                if (file_exists($basePath . $viewsDir . $view . $extension)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether automatic rendering is enabled
+     *
+     * @return bool
+     */
+    public function isDisabled(): bool
+    {
+        return $this->disabled;
+    }
+
+    /**
+     * Renders a partial view
+     *
+     * ```php
+     * // Show a partial inside another view
+     * $this->partial("shared/footer");
+     * ```
+     *
+     * ```php
+     * // Show a partial inside another view with parameters
+     * $this->partial(
+     *     "shared/footer",
+     *     [
+     *         "content" => $html,
+     *     ]
+     * );
+     * ```
+     *
+     * @param string $partialPath
+     * @param mixed  $params
+     *
+     */
+    public function partial(?string $partialPath, mixed $params = null): void
+    {
+        /**
+         * If the developer pass an array of variables we create a new virtual
+         * symbol table
+         */
+        if (true === is_array($params)) {
+            /**
+             * Merge the new params as parameters
+             */
+            $viewParams = $this->viewParams;
+            $this->viewParams = array_merge($viewParams, $params);
+
+            /**
+             * Create a virtual symbol table
+             */
+            // create_symbol_table();
+        }
+
+        /**
+         * Partials are looked up under the partials directory
+         * We need to check if the engines are loaded first, this method could
+         * be called outside of 'render'
+         * Call engine render, this checks in every registered engine for the
+         * partial
+         */
+        $this->engineRender(
+            $this->loadTemplateEngines(),
+            $this->partialsDir . $partialPath,
+            false,
+            false
+        );
+
+        /**
+         * Now we need to restore the original view parameters
+         */
+        if (true === is_array($params)) {
+            /**
+             * Restore the original view params
+             */
+            $this->viewParams = $viewParams;
+        }
+    }
+
+    /**
+     * Choose a different view to render instead of last-controller/last-action
+     *
+     * ```php
+     * use Phalcon\Mvc\Controller;
+     *
+     * class ProductsController extends Controller
+     * {
+     *     public function saveAction()
+     *     {
+     *         // Do some save stuff...
+     *
+     *         // Then show the list view
+     *         $this->view->pick("products/list");
+     *     }
+     * }
+     * ```
+     *
+     * @param mixed $renderView
+     * @return View
+     */
+    public function pick(mixed $renderView): View
+    {
+        if (true === is_array($renderView)) {
+            $pickView = $renderView;
+        } else {
+            $layout = null;
+
+            if (strpos($renderView, "/") !== false) {
+                $parts = explode("/", $renderView);
+                $layout = $parts[0];
+            }
+
+            $pickView = [$renderView];
+
+            if ($layout !== null) {
+                $pickView[] = $layout;
+            }
+        }
+
+        $this->pickView = $pickView;
+
+        return $this;
+    }
+
+    /**
+     * Register templating engines
+     *
+     * ```php
+     * $this->view->registerEngines(
+     *     [
+     *         ".phtml" => \Phalcon\Mvc\View\Engine\Php::class,
+     *         ".volt"  => \Phalcon\Mvc\View\Engine\Volt::class,
+     *         ".mhtml" => \MyCustomEngine::class,
+     *     ]
+     * );
+     * ```
+     *
+     * @param array|null engines
+     * @return \Phalcon\Mvc\View\View
+     */
+    public function registerEngines(?array $engines): View
+    {
+        $this->registeredEngines = $engines;
+
+        return $this;
+    }
+
+    /**
+     * Executes render process from dispatching data
+     *
+     *```php
+     * // Shows recent posts view (app/views/posts/recent.phtml)
+     * $view->start()->render("posts", "recent")->finish();
+     *```
+     *
+     * @param string controllerName
+     * @param string actionName
+     * @param array params
+     * @return \Phalcon\Mvc\View\View
+     */
+    public function render(
+        ?string $controllerName,
+        ?string $actionName,
+        array $params = []
+    ): View|bool { // TODO: return View or null
+        $result = $this->processRender($controllerName, $actionName, $params);
+
+        if (!$result) {
+            return false;
+        }
+
+        return $this;
+    }
+
+    /**
+     * Resets the view component to its factory default values
+     *
+     * @return View
+     */
+    public function reset(): View
+    {
+        $this->disabled = false;
+        $this->engines = false;
+        $this->renderLevel = self::LEVEL_MAIN_LAYOUT;
+        $this->content = "";
+        $this->templatesBefore = [];
+        $this->templatesAfter = [];
+        return $this;
+    }
+
+    /**
+     * Sets base path. Depending of your platform, always add a trailing slash
+     * or backslash
+     *
+     * ```php
+     * $view->setBasePath(__DIR__ . "/");
+     * ```
+     *
+     * @param ?string basePath
+     * @return View
+     */
+    public function setBasePath(?string $basePath): View
+    {
+        $this->basePath = $basePath;
+
+        return $this;
+    }
+
+    /**
+     * Externally sets the view content
+     *
+     *```php
+     * $this->view->setContent("<h1>hello</h1>");
+     *
+     *```
+     *
+     * @param ?string content
+     * @return View
+     */
+    public function setContent(?string $content): View
+    {
+        $this->content = $content;
+
+        return $this;
+    }
+
+    /**
+     * Sets the events manager
+     *
+     * @param ManagerInterface eventsManager
+     * @return void
+     */
+    public function setEventsManager(ManagerInterface $eventsManager): void
+    {
+        $this->eventsManager = $eventsManager;
+    }
+
+    /**
+     * Change the layout to be used instead of using the name of the latest
+     * controller name
+     *
+     * ```php
+     * $this->view->setLayout("main");
+     * ```
+     *
+     * @param ?string layout
+     * @return View
+     */
+    public function setLayout(?string $layout): View
+    {
+        $this->layout = $layout;
+
+        return $this;
+    }
+
+    /**
+     * Sets the layouts sub-directory. Must be a directory under the views
+     * directory. Depending of your platform, always add a trailing slash or
+     * backslash
+     *
+     *```php
+     * $view->setLayoutsDir("../common/layouts/");
+     *```
+     *
+     * @param ?string layoutsDir
+     * @return View
+     */
+    public function setLayoutsDir(?string $layoutsDir): View
+    {
+        $this->layoutsDir = $layoutsDir;
+
+        return $this;
+    }
+
+    /**
+     * Sets default view name. Must be a file without extension in the views
+     * directory
+     *
+     * ```php
+     * // Renders as main view views-dir/base.phtml
+     * $this->view->setMainView("base");
+     * ```
+     *
+     * @param ?string viewPath
+     * @return View
+     */
+    public function setMainView(?string $viewPath): View
+    {
+        $this->mainView = $viewPath;
+
+        return $this;
+    }
+
+    /**
+     * Sets a partials sub-directory. Must be a directory under the views
+     * directory. Depending of your platform, always add a trailing slash or
+     * backslash
+     *
+     *```php
+     * $view->setPartialsDir("../common/partials/");
+     *```
+     *
+     * @param ?string partialsDir
+     * @return View
+     */
+    public function setPartialsDir(?string $partialsDir): View
+    {
+        $this->partialsDir = $partialsDir;
+
+        return $this;
+    }
+
+    /**
+     * Adds parameters to views (alias of setVar)
+     *
+     *```php
+     * $this->view->setParamToView("products", $products);
+     *```
+     *
+     * @param string key
+     * @param mixed value
+     * @return View
+     */
+    public function setParamToView(?string $key, mixed $value): View
+    {
+        $this->viewParams[$key] = $value;
+
+        return $this;
+    }
+
+    /**
+     * Sets the render level for the view
+     *
+     * ```php
+     * // Render the view related to the controller only
+     * $this->view->setRenderLevel(
+     *     View::LEVEL_LAYOUT
+     * );
+     * ```
+     *
+     * @param int $level
+     * @return ViewInterface
+     */
+    public function setRenderLevel(int $level): ViewInterface
+    {
+        $this->renderLevel = $level;
+
+        return $this;
+    }
+
+    /**
+     * Sets a "template after" controller layout
+     *
+     * @param mixed $templateAfter
+     * @return ViewInterface
+     */
+    public function setTemplateAfter(mixed $templateAfter): ViewInterface // TODO: remove mixed
+    {
+        if (false === is_array($templateAfter)) {
+            $this->templatesAfter = [$templateAfter];
+        } else {
+            $this->templatesAfter = $templateAfter;
+        }
+
+        return $this;
+    }
+
+    /**
+     * Sets a template before the controller layout
+     *
+     * @param mixed $templateBefore
+     * @return ViewInterface
+     */
+    public function setTemplateBefore(mixed $templateBefore): ViewInterface // TODO: remove mixed
+    {
+        if (false  === is_array($templateBefore)) {
+            $this->templatesBefore = [$templateBefore];
+        } else {
+            $this->templatesBefore = $templateBefore;
+        }
+
+        return $this;
+    }
+
+    /**
+     * Set a single view parameter
+     *
+     *```php
+     * $this->view->setVar("products", $products);
+     *```
+     * @param ?string $key
+     * @param mixed $value
+     * @return ViewInterface
+     */
+    public function setVar(?string $key, mixed $value): ViewInterface
+    {
+        $this->viewParams[$key] = $value;
+
+        return $this;
+    }
+
+    /**
+     * Set all the render params
+     *
+     *```php
+     * $this->view->setVars(
+     *     [
+     *         "products" => $products,
+     *     ]
+     * );
+     *```
+     *
+     * @param ?array params
+     * @param bool merge
+     * @return View
+     */
+    public function setVars(?array $params, bool $merge = true): View
+    {
+        if (true === $merge) {
+            $this->viewParams = array_merge($this->viewParams, $params);
+        } else {
+            $this->viewParams = $params;
+        }
+
+        return $this;
+    }
+
+
+    /**
+     * Renders the view and returns it as a string
+     *
+     * @param string $controllerName
+     * @param string $actionName
+     * @param array $params
+     * @return string
+     */
+    public function toString(
+        ?string $controllerName,
+        ?string $actionName,
+        array $params = []
+    ): string {
+        $this->start();
+
+        $result = $this->processRender(
+            $controllerName,
+            $actionName,
+            $params,
+            false
+        );
+
+        $this->finish();
+
+        if (!$result) {
+            return "";
+        }
+
+        return $this->getContent();
+    }
+
+    /**
+     * Checks whether view exists on registered extensions and render it
+     *
+     * @param array engines
+     * @param string viewPath
+     * @param bool silence
+     * @param bool mustClean
+     * @return void
+     * @throws Phalcon\Mvc\View\Exception
+     */
+    protected function engineRender(
+        array $engines,
+        string $viewPath,
+        bool $silence,
+        bool $mustClean = true
+    ): void {
+        $basePath        = $this->basePath;
+        $viewParams      = $this->viewParams;
+        $eventsManager   = $this->eventsManager;
+        $viewEnginePaths = [];
+
+        foreach ($this->getViewsDirs as $viewDir) {
+            if (!$this->isAbsolutePath($viewPath)) {
+                $viewsDirPath = $basePath . $viewDir . $viewPath;
+            } else {
+                $viewsDirPath = $viewPath;
+            }
+
+            /**
+             * Views are rendered in each engine
+             */
+            foreach ($engines as $extension => $engine) {
+                $viewEnginePath = $viewsDirPath . $extension;
+
+                if (true === file_exists($viewEnginePath)) {
+                    /**
+                     * Call beforeRenderView if there is an events manager
+                     * available
+                     */
+                    if (true === is_object($eventsManager)) {
+                        $this->activeRenderPaths = [$viewEnginePath];
+
+                        if ($eventsManager->fire("view:beforeRenderView", $this, $viewEnginePath) === false) {
+                            continue;
+                        }
+                    }
+                    $engine->render($viewEnginePath, $viewParams, $mustClean);
+
+                    if (true === is_object($eventsManager)) {
+                        $eventsManager->fire("view:afterRenderView", $this);
+                    }
+                    return;
+                }
+                $viewEnginePaths[] = $viewEnginePath;
+            }
+        }
+
+        /**
+         * Notify about not found views
+         */
+        if (true === is_object($eventsManager)) {
+            $this->activeRenderPaths = $viewEnginePaths;
+            $eventsManager->fire("view:notFoundView", $this, $viewEnginePath);
+        }
+
+        if (!$silence) {
+            throw new Exception(
+                "View '" . $viewPath . "' was not found in any of the views directory"
+            );
+        }
+    }
+
+    /**
+     * Checks if a path is absolute or not
+     *
+     * @param string $path
+     * @return bool
+     */
+    final protected function isAbsolutePath(string $path): bool
+    {
+        if (PHP_OS === "WINNT") { // TODO: Fix This
+            return strlen($path) >= 3 && $path[1] === ':' && $path[2] === '\\';
+        }
+
+        return strlen($path) >= 1 && $path[0] === '/';
+    }
+
+    /**
+     * Loads registered template engines, if none is registered it will use
+     * Phalcon\Mvc\View\Engine\Php
+     *
+     * @return array
+     * @throws \Phalcon\Mvc\View\Exception
+     */
+    protected function loadTemplateEngines(): array
+    {
+        $engines = $this->engines;
+
+        /**
+         * If the engines aren't initialized 'engines' is false
+         */
+        if ($engines === false) {
+            /**
+             * @var \Phalcon\Di\DiInterface $di
+             */
+            $di = $this->container;
+
+            $engines = [];
+
+            $registeredEngines = $this->registeredEngines;
+
+            if (true === empty($registeredEngines)) {
+                /**
+                 * We use Phalcon\Mvc\View\Engine\Php as default
+                 */
+                $engines[".phtml"] = new PhpEngine($this, $di);
+            } else {
+                if (false === is_object($di)) {
+                    throw new Exception(
+                        "A dependency injection container is required to access application services"
+                    );
+                }
+
+                foreach ($registeredEngines as $extension => $engineService) {
+                    if (true === is_object($engineService)) {
+                        /**
+                         * Engine can be a closure
+                         */
+                        if ($engineService instanceof Closure) {
+                            $engineService = Closure::bind(
+                                $engineService,
+                                $di
+                            );
+
+                            $engines[$extension] = call_user_func(
+                                $engineService,
+                                $this
+                            );
+                        } else {
+                            $engines[$extension] = $engineService;
+                        }
+                    } else {
+                        /**
+                         * Engine can be a string representing a service in the DI
+                         */
+                        if (false === is_string($engineService)) {
+                            throw new Exception(
+                                "Invalid template engine registration for extension: " . $extension
+                            );
+                        }
+
+                        $engines[$extension] = $di->get(
+                            $engineService,
+                            [$this]
+                        );
+                    }
+                }
+            }
+
+            $this->engines = $engines;
+        }
+
+        return $engines;
+    }
+
+    /**
+     * Processes the view and templates; Fires events if needed
+     *
+     * @param string $controllerName
+     * @param string $actionName
+     * @param array $params
+     * @param bool $fireEvents
+     * @return bool
+     */
+    public function processRender(
+        ?string $controllerName,
+        ?string $actionName,
+        array $params = [],
+        bool $fireEvents = true
+    ): bool {
+
+        $this->currentRenderLevel = 0;
+
+      /**
+        * If the view is disabled we simply update the buffer from any output
+        * produced in the controller
+        */
+        if ($this->disabled !== false) {
+            $this->content = ob_get_contents();
+
+            return false;
+        }
+
+        $this->controllerName = $controllerName;
+        $this->actionName     = $actionName;
+
+        $this->setVars($params);
+
+      /**
+        * Check if there is a layouts directory set
+        */
+        $layoutsDir = $this->layoutsDir;
+
+        if (!$layoutsDir) {
+            $layoutsDir = "layouts/";
+        }
+
+      /**
+        * Check if the user has defined a custom layout
+        */
+        $layout = $this->layout;
+
+        if ($layout) {
+            $layoutName = $layout;
+        } else {
+            $layoutName = $controllerName;
+        }
+
+      /**
+        * Load the template engines
+        */
+        $engines = $this->loadTemplateEngines();
+
+      /**
+        * Check if the user has picked a view different than the automatic
+        */
+        $pickView = $this->pickView;
+
+        if ($pickView === null) {
+            $renderView = $controllerName . "/" . $actionName;
+        } else {
+            /**
+             * The 'picked' view is an array, where the first element is
+             * controller and the second the action
+             */
+            $renderView = $pickView[0];
+        }
+
+        if ($layoutName === null) {
+            if (true === isset($pickView[1])) {
+                $layoutName = $pickView[1];
+            }
+        }
+
+        $eventsManager = $this->eventsManager;
+
+        /**
+         * Call beforeRender if there is an events manager
+         */
+        if ($fireEvents && true === is_object($eventsManager)) {
+            if ($eventsManager->fire("view:beforeRender", $this) === false) {
+                return false;
+            }
+        }
+
+        /**
+         * Get the current content in the buffer maybe some output from the
+         * controller?
+         */
+        $this->content = ob_get_contents();
+        $silence       = true;
+
+        /**
+         * Disabled levels allow to avoid an specific level of rendering
+         */
+        $disabledLevels = $this->disabledLevels;
+
+        /**
+         * Render level will tell use when to stop
+         */
+        $renderLevel = (int) $this->renderLevel;
+
+        if ($renderLevel) {
+            /**
+             * Inserts view related to action
+             */
+            if ($renderLevel >= self::LEVEL_ACTION_VIEW) {
+                if (!isset($disabledLevels[self::LEVEL_ACTION_VIEW])) {
+                    $this->currentRenderLevel = self::LEVEL_ACTION_VIEW;
+
+                    $this->engineRender(
+                        $engines,
+                        $renderView,
+                        $silence
+                    );
+                }
+            }
+
+            /**
+             * Inserts templates before layout
+             */
+            if ($renderLevel >= self::LEVEL_BEFORE_TEMPLATE) {
+                if (!isset($disabledLevels[self::LEVEL_BEFORE_TEMPLATE])) {
+                    $this->currentRenderLevel = self::LEVEL_BEFORE_TEMPLATE;
+                    $templatesBefore          = $this->templatesBefore;
+                    $silence                  = false;
+
+                    foreach ($templatesBefore as $templateBefore) {
+                        $this->engineRender(
+                            $engines,
+                            $layoutsDir . $templateBefore,
+                            $silence
+                        );
+                    }
+
+                    $silence = true;
+                }
+            }
+
+            /**
+             * Inserts controller layout
+             */
+            if ($renderLevel >= self::LEVEL_LAYOUT) {
+                if (!isset($disabledLevels[self::LEVEL_LAYOUT])) {
+                    $this->currentRenderLevel = self::LEVEL_LAYOUT;
+
+                    $this->engineRender(
+                        $engines,
+                        $layoutsDir . $layoutName,
+                        $silence
+                    );
+                }
+            }
+
+            /**
+             * Inserts templates after layout
+             */
+            if ($renderLevel >= self::LEVEL_AFTER_TEMPLATE) {
+                if (!isset($disabledLevels[self::LEVEL_AFTER_TEMPLATE])) {
+                    $this->currentRenderLevel = self::LEVEL_AFTER_TEMPLATE;
+                    $templatesAfter           = $this->templatesAfter;
+                    $silence                  = false;
+
+                    foreach ($templatesAfter as $templateAfter) {
+                        $this->engineRender(
+                            $engines,
+                            $layoutsDir . $templateAfter,
+                            $silence
+                        );
+                    }
+
+                    $silence = true;
+                }
+            }
+
+            /**
+             * Inserts main view
+             */
+            if ($renderLevel >= self::LEVEL_MAIN_LAYOUT) {
+                if (!isset($disabledLevels[self::LEVEL_MAIN_LAYOUT])) {
+                    $this->currentRenderLevel = self::LEVEL_MAIN_LAYOUT;
+
+                    $this->engineRender(
+                        $engines,
+                        $this->mainView,
+                        $silence
+                    );
+                }
+            }
+
+            $this->currentRenderLevel = 0;
+        }
+
+        /**
+         * Call afterRender event
+         */
+        if ($fireEvents && true === is_object($eventsManager)) {
+            $eventsManager->fire("view:afterRender", $this);
+        }
+
+        return true;
     }
 }

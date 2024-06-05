@@ -11,14 +11,34 @@
 
 declare(strict_types=1);
 
-namespace Phalcon\Support\Trait;
+namespace Phalcon\Support\Traits;
 
 use function str_replace;
+use function hash;
 
 trait FilePathTrait
 {
-    public function prepareVirtualPath($key): string
+    /**
+     * Returns a prepared virtual path based on the original path
+     *
+     * @param string $key
+     *
+     * @return string
+     */
+    public function prepareVirtualPath(string $key): string
     {
         return str_replace(['/', '\\', ':'], '_', $key);
+    }
+
+    /**
+     * Returns a unique key for the path
+     *
+     * @param string $path
+     *
+     * @return string
+     */
+    public function uniquePathKey(string $path): string
+    {
+        return hash('xxh3', $path);
     }
 }

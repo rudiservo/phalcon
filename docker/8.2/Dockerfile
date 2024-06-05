@@ -80,6 +80,9 @@ RUN docker-php-ext-install \
         pdo_pgsql \
         zip
 
+RUN pecl install \
+        memcached
+
 # Install PHP extensions
 RUN docker-php-ext-enable \
         gettext \

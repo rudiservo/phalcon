@@ -24,7 +24,7 @@ interface EventsAwareInterface
     /**
      * Returns the internal event manager
      *
-     * @return ManagerInterface|null
+     * @return ?ManagerInterface
      */
     public function getEventsManager(): ?ManagerInterface;
 
