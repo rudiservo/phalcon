@@ -1260,12 +1260,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/phalcon/volt.git",
-                "reference": "304ee7bafc96efd29f75c9f9ca3afb9f737a0257"
+                "reference": "b93e50a4cb2fe8d3724e8680a2b4e637719c967d"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/phalcon/volt/zipball/304ee7bafc96efd29f75c9f9ca3afb9f737a0257",
-                "reference": "304ee7bafc96efd29f75c9f9ca3afb9f737a0257",
+                "url": "https://api.github.com/repos/phalcon/volt/zipball/b93e50a4cb2fe8d3724e8680a2b4e637719c967d",
+                "reference": "b93e50a4cb2fe8d3724e8680a2b4e637719c967d",
                 "shasum": ""
             },
             "require": {
@@ -1329,7 +1329,7 @@
                     "type": "open_collective"
                 }
             ],
-            "time": "2024-11-17T19:29:38+00:00"
+            "time": "2024-11-17T19:41:12+00:00"
         },
         {
             "name": "phar-io/manifest",
