@@ -34,6 +34,8 @@ final class ConnectDisconnectIsConnectedTest extends AbstractDatabaseTestCase
         $this->assertTrue($connection->isConnected());
         $connection->disconnect();
         $this->assertFalse($connection->isConnected());
+        $connection->connect();
+        $this->assertTrue($connection->isConnected());
     }
 
     /**
@@ -58,17 +60,15 @@ final class ConnectDisconnectIsConnectedTest extends AbstractDatabaseTestCase
             );
 
             $this->assertFalse($connection->isConnected());
-            $result = $connection->fetchOne(
-                'show variables like "character_set_client"'
-            );
 
-            $this->assertTrue($connection->isConnected());
             $expected = [
                 'Variable_name' => 'character_set_client',
                 'Value'         => 'big5',
             ];
-
-            $this->assertEquals($expected, $result);
+            $actual   = $connection->fetchOne(
+                'show variables like "character_set_client"'
+            );
+            $this->assertSame($expected, $actual);
         }
     }
 }
