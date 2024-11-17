@@ -14,8 +14,8 @@ declare(strict_types=1);
 namespace Phalcon\Tests\Unit\Mvc\View\Engine\Volt\Compiler;
 
 use Phalcon\Mvc\View\Engine\Volt\Compiler;
-use Phalcon\Mvc\View\Exception;
 use Phalcon\Tests\AbstractUnitTestCase;
+use Phalcon\Volt\Exception;
 
 use function is_array;
 
@@ -253,7 +253,7 @@ class ParseTest extends AbstractUnitTestCase
                 {% endfor %}
 
                 ',
-                'Syntax error, unexpected token ~ in eval code on line 4',
+                'Syntax error, unexpected token ~(id) in eval code on line 4',
             ],
             [
                 '\'{{ link_to("album/" ~ album.id ~ "/" ~ $album.uri, ' .

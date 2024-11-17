@@ -20,6 +20,7 @@ use Phalcon\Mvc\View\ViewBaseInterface;
 use Phalcon\Parsers\Volt\Enum;
 use Phalcon\Support\Traits\FilePathTrait;
 use Phalcon\Traits\Helper\Str\CamelizeTrait;
+use Phalcon\Volt\Exception;
 use Phalcon\Volt\Parser\Parser;
 
 use function addslashes;
@@ -2163,9 +2164,7 @@ class Compiler implements InjectionAwareInterface
      * );
      *```
      *
-     * @param string $viewCode
-     *
-     * @return array
+     * @throws Exception
      */
     public function parse(string $viewCode): array
     {
