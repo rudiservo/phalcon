@@ -163,16 +163,16 @@
         },
         {
             "name": "phalcon/traits",
-            "version": "2.0.3",
+            "version": "2.0.4",
             "source": {
                 "type": "git",
                 "url": "https://github.com/phalcon/traits.git",
-                "reference": "d76a8f60f7a4795579aa1b516f109b256396a80a"
+                "reference": "66d045abc8fc07c530e84173aa1de299898a6992"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/phalcon/traits/zipball/d76a8f60f7a4795579aa1b516f109b256396a80a",
-                "reference": "d76a8f60f7a4795579aa1b516f109b256396a80a",
+                "url": "https://api.github.com/repos/phalcon/traits/zipball/66d045abc8fc07c530e84173aa1de299898a6992",
+                "reference": "66d045abc8fc07c530e84173aa1de299898a6992",
                 "shasum": ""
             },
             "require": {
@@ -187,8 +187,8 @@
                 "codeception/module-phpbrowser": "^3.0",
                 "pds/skeleton": "^1.0",
                 "phpstan/phpstan": "^1.9",
+                "phpunit/phpunit": "^10.5",
                 "squizlabs/php_codesniffer": "^3.7",
-                "vimeo/psalm": "^5.4",
                 "vlucas/phpdotenv": "^5.5"
             },
             "suggest": {
@@ -200,7 +200,7 @@
                 "psr-4": {
                     "Phalcon\\Traits\\": "src/",
                     "Phalcon\\Tests\\Unit\\": "tests/unit/",
-                    "Phalcon\\Tests\\Fixtures\\": "tests/_data/fixtures/"
+                    "Phalcon\\Tests\\Fixtures\\": "tests/support/fixtures/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -215,7 +215,7 @@
             ],
             "support": {
                 "issues": "https://github.com/phalcon/traits/issues",
-                "source": "https://github.com/phalcon/traits/tree/2.0.3"
+                "source": "https://github.com/phalcon/traits/tree/2.0.4"
             },
             "funding": [
                 {
@@ -227,7 +227,7 @@
                     "type": "open_collective"
                 }
             ],
-            "time": "2023-05-01T14:08:11+00:00"
+            "time": "2024-12-28T22:42:14+00:00"
         },
         {
             "name": "psr/container",
