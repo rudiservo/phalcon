@@ -282,8 +282,7 @@ class Debug
         int $severity,
         string $message,
         string $file,
-        int $line,
-        array $context = []
+        int $line
     ): void {
         if (error_reporting() & $severity) {
             throw new ErrorException($message, 0, $severity, $file, $line);
